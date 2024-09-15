@@ -7,8 +7,14 @@ const config: Config.InitialOptions = {
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },
-  collectCoverageFrom: ['**/*.(t|j)s'],
-  coverageDirectory: '../coverage',
+  // Only collect coverage from source files and ignore dist, node_modules, and test directories
+  collectCoverageFrom: [
+    'src/**/*.(t|j)s',
+    '!**/dist/**',
+    '!**/node_modules/**',
+    '!**/test/**',
+  ],
+  coverageDirectory: './coverage',
   testEnvironment: 'node',
 };
 

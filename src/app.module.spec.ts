@@ -6,6 +6,8 @@ import { AccountsModule } from './modules/accounts/accounts.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
+import { getQueueToken } from '@nestjs/bull';
+import { NotificationModule } from './modules/notification/notification.module';
 
 describe('AppModule', () => {
   let appModule: TestingModule;
@@ -35,8 +37,14 @@ describe('AppModule', () => {
         AuthModule,
         UsersModule,
         TransactionsModule,
+        NotificationModule,
       ],
-    }).compile();
+    })
+      .overrideProvider(getQueueToken('email-queue'))
+      .useValue({
+        add: jest.fn(),
+      })
+      .compile();
   });
 
   it('should compile the module', async () => {

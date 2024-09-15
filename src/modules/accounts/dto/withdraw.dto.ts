@@ -1,7 +1,7 @@
-import { IsNumber, IsPositive } from 'class-validator';
+import { IsPositive, IsNotEmpty } from 'class-validator';
 
 export class WithdrawDto {
-  @IsNumber()
-  @IsPositive()
-  readonly amount: number;
+  @IsNotEmpty({ message: 'Amount is required' })
+  @IsPositive({ message: 'Amount must be positive' })
+  readonly amount: bigint;
 }

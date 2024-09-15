@@ -15,7 +15,7 @@ export class Account {
   id: number;
 
   @Column({ type: 'bigint', default: 0 })
-  balance: number;
+  balance: bigint;
 
   @Column({ type: 'enum', enum: AccountType })
   accountType: AccountType;

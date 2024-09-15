@@ -1,9 +1,9 @@
-import { IsEmail, IsNotEmpty, IsNumber, Min } from 'class-validator';
+import { IsEmail, IsNotEmpty, Min } from 'class-validator';
 
 export class TransferDto {
-  @IsNumber()
+  @IsNotEmpty({ message: 'Amount is required' })
   @Min(0.01, { message: 'Transfer amount must be greater than 0' })
-  amount: number;
+  amount: bigint;
 
   @IsEmail({}, { message: 'Invalid recipient email address' })
   @IsNotEmpty({ message: 'Recipient email address is required' })

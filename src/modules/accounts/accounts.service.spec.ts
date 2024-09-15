@@ -51,7 +51,7 @@ describe('AccountsService', () => {
 
       const newAccount = new Account();
       newAccount.accountType = createAccountDto.accountType;
-      newAccount.balance = 0;
+      newAccount.balance = BigInt(0);
       newAccount.user = user;
 
       jest.spyOn(userRepository, 'findOne').mockResolvedValue(user);
@@ -95,12 +95,12 @@ describe('AccountsService', () => {
     it('should return the balance of the account', async () => {
       const userId = 1;
       const account = new Account();
-      account.balance = 500;
+      account.balance = BigInt(500);
 
       jest.spyOn(accountRepository, 'findOne').mockResolvedValue(account);
 
       const result = await service.getBalance(userId);
-      expect(result.balance).toEqual(500);
+      expect(result.balance).toEqual(BigInt(500));
     });
 
     it('should throw an error if account is not found', async () => {

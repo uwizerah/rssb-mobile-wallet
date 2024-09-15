@@ -11,6 +11,7 @@ import { NotificationService } from '../notification/notification.service';
 import { NotificationModule } from '../notification/notification.module';
 import { BullModule } from '@nestjs/bull';
 import { ConfigModule } from '@nestjs/config';
+import { PdfService } from '../../utils/pdf.service';
 
 @Module({
   imports: [
@@ -23,7 +24,12 @@ import { ConfigModule } from '@nestjs/config';
     ConfigModule,
   ],
   controllers: [AccountsController],
-  providers: [AccountsService, TransactionsService, NotificationService],
+  providers: [
+    AccountsService,
+    TransactionsService,
+    NotificationService,
+    PdfService,
+  ],
   exports: [AccountsService],
 })
 export class AccountsModule {}

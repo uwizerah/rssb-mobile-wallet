@@ -7,6 +7,7 @@ import {
   UseGuards,
   Post,
   Req,
+  Res,
 } from '@nestjs/common';
 // import { Throttle } from '@nestjs/throttler';
 // import { AuthGuard } from '@nestjs/passport';
@@ -15,6 +16,7 @@ import { TransactionsService } from '../transactions/transactions.service';
 import { DepositDto, WithdrawDto, TransferDto } from './dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateAccountDto } from './dto/createAccount.dto';
+import { Response } from 'express';
 
 @Controller('accounts')
 export class AccountsController {
@@ -42,6 +44,7 @@ export class AccountsController {
   @Patch(':id/deposit')
   @UseGuards(JwtAuthGuard)
   async deposit(
+    @Req() req: any,
     @Param('id') accountId: number,
     @Body() depositDto: DepositDto,
   ) {
@@ -62,5 +65,13 @@ export class AccountsController {
     @Body() transferDto: TransferDto,
   ) {
     return this.transactionsService.transfer(accountId, transferDto);
+  }
+
+  @Get('statement/:accountId')
+  async getAccountStatement(
+    @Param('accountId') accountId: number,
+    @Res() res: Response,
+  ) {
+    return this.transactionsService.generateAccountStatement(accountId, res);
   }
 }

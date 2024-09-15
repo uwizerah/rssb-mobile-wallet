@@ -5,6 +5,7 @@ import { TransactionsService } from './transactions.service';
 import { Account } from '../accounts/account.entity';
 import { TransactionsController } from './transactions.controller';
 import { NotificationModule } from '../notification/notification.module';
+import { PdfService } from '../../utils/pdf.service';
 
 @Module({
   imports: [
@@ -12,7 +13,7 @@ import { NotificationModule } from '../notification/notification.module';
     NotificationModule,
   ],
   controllers: [TransactionsController],
-  providers: [TransactionsService],
+  providers: [TransactionsService, PdfService],
   exports: [TransactionsService],
 })
 export class TransactionsModule {}

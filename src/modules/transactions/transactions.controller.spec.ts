@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TransactionsController } from './transactions.controller';
 import { TransactionsService } from './transactions.service';
+import { TransactionType } from './transaction-type.enum';
 
 describe('TransactionsController', () => {
   let controller: TransactionsController;
@@ -32,7 +33,7 @@ describe('TransactionsController', () => {
       const page = 1;
       const startDate = '2023-01-01';
       const endDate = '2023-12-31';
-      const transactionType = 'deposit';
+      const transactionType = TransactionType.DEPOSIT;
       const minAmount = 100;
       const maxAmount = 500;
       const recipientAccountId = 2;

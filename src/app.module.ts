@@ -9,7 +9,8 @@ import { ConfigModule } from '@nestjs/config';
 import { UsersModule } from './modules/users/users.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
-
+import { NotificationModule } from './modules/notification/notification.module';
+import { PdfService } from './utils/pdf.service';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -26,8 +27,9 @@ import { AccountsModule } from './modules/accounts/accounts.module';
     TransactionsModule,
     UsersModule,
     AccountsModule,
+    NotificationModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, PdfService],
 })
 export class AppModule {}

@@ -10,6 +10,9 @@ export async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }),
   );
+  (BigInt.prototype as any).toJSON = function () {
+    return this.toString();
+  };
   await app.listen(port);
   console.log(`Application is running on: ${await app.getUrl()}`);
 }

@@ -8,7 +8,7 @@ export class Transaction {
   id: number;
 
   @Column({ type: 'bigint', default: 0 })
-  amount: number;
+  amount: bigint;
 
   @Column({ type: 'enum', enum: TransactionType })
   transactionType: TransactionType;

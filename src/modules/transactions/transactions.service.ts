@@ -7,6 +7,8 @@ import { DepositDto, WithdrawDto, TransferDto } from '../accounts/dto';
 import { TransactionType } from './transaction-type.enum';
 import { NotificationService } from '../notification/notification.service';
 import { v4 as uuidv4 } from 'uuid';
+import { PdfService } from '../../utils/pdf.service';
+import { Response } from 'express';
 
 @Injectable()
 export class TransactionsService {
@@ -16,6 +18,7 @@ export class TransactionsService {
     @InjectRepository(Account)
     private readonly accountRepository: Repository<Account>,
     private readonly notificationService: NotificationService,
+    private readonly pdfService: PdfService,
   ) {}
 
   async deposit(
@@ -38,13 +41,13 @@ export class TransactionsService {
           .where('account.id = :id', { id: accountId })
           .getOne();
 
-        account.balance += depositDto.amount;
+        account.balance = BigInt(account.balance) + BigInt(depositDto.amount);
         await manager.save(account);
 
         const transaction = manager.create(Transaction, {
           account,
           transactionType: TransactionType.DEPOSIT,
-          amount: depositDto.amount,
+          amount: BigInt(depositDto.amount),
           reference: uuidv4(),
         });
 
@@ -91,19 +94,17 @@ export class TransactionsService {
           throw new Error('Insufficient balance');
         }
 
-        account.balance -= withdrawDto.amount;
-        console.log('withdraw update balance');
+        account.balance = BigInt(account.balance) - BigInt(withdrawDto.amount);
         await manager.save(account);
 
         const transaction = manager.create(Transaction, {
           account,
           transactionType: TransactionType.WITHDRAWAL,
-          amount: withdrawDto.amount,
+          amount: BigInt(withdrawDto.amount),
           reference: uuidv4(),
         });
 
         const savedTransaction = await manager.save(transaction);
-        console.log('xxx after saved');
         await this.notificationService.sendEmail(
           account.user.email,
           'Withdrawal Successful',
@@ -135,7 +136,7 @@ export class TransactionsService {
         }
 
         const senderEmail = senderAccount.user.email;
-        const recipientUsername = recipientAccount.user.username;
+        const recipientEmail = recipientAccount.user.email;
 
         // Re-fetch the accounts with the pessimistic write lock
         senderAccount = await manager.findOne(Account, {
@@ -148,16 +149,18 @@ export class TransactionsService {
         });
 
         if (senderAccount.balance < transferDto.amount) {
-          await this.notificationService.queueEmail(
+          await this.notificationService.sendEmail(
             senderEmail,
             'Transfer Failed',
-            `Your transfer of ${transferDto.amount} to ${recipientUsername} failed due to insufficient balance.`,
+            `Your transfer of ${transferDto.amount} to ${recipientEmail} failed due to insufficient balance.`,
           );
           throw new Error('Insufficient balance');
         }
 
-        senderAccount.balance -= transferDto.amount;
-        recipientAccount.balance += transferDto.amount;
+        senderAccount.balance =
+          BigInt(senderAccount.balance) - BigInt(transferDto.amount);
+        recipientAccount.balance =
+          BigInt(recipientAccount.balance) + BigInt(transferDto.amount);
 
         await manager.save(senderAccount);
         await manager.save(recipientAccount);
@@ -165,7 +168,7 @@ export class TransactionsService {
         const transaction = manager.create(Transaction, {
           account: senderAccount,
           transactionType: TransactionType.TRANSFER,
-          amount: transferDto.amount,
+          amount: BigInt(transferDto.amount),
           reference: uuidv4(),
         });
 
@@ -174,7 +177,7 @@ export class TransactionsService {
         await this.notificationService.sendEmail(
           senderEmail,
           'Transfer Successful',
-          `You have successfully transferred ${transferDto.amount} to $. Your new balance is ${senderAccount.balance}.`,
+          `You have successfully transferred ${transferDto.amount} to ${recipientEmail}. Your new balance is ${senderAccount.balance}.`,
         );
 
         return savedTransaction;
@@ -260,5 +263,41 @@ export class TransactionsService {
         return transactions;
       },
     );
+  }
+
+  async generateAccountStatement(
+    accountId: number,
+    res: Response,
+  ): Promise<void> {
+    const account = await this.accountRepository.findOne({
+      where: { id: accountId },
+      relations: ['user'],
+    });
+
+    if (!account) {
+      throw new Error('Account not found');
+    }
+
+    const transactions = await this.transactionRepository.find({
+      where: { account: { id: accountId } },
+      order: { createdAt: 'DESC' },
+    });
+
+    const pdfBuffer = await this.pdfService.generateAccountStatement(
+      account,
+      transactions,
+    );
+
+    if (!pdfBuffer || !pdfBuffer.length) {
+      throw new Error('Failed to generate PDF');
+    }
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename=account_statement_${accountId}.pdf`,
+      'Content-Length': pdfBuffer.length,
+    });
+
+    res.send(pdfBuffer);
   }
 }

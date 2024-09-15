@@ -1,4 +1,3 @@
-// src/modules/notification/notification.module.ts
 import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
 import { NotificationService } from './notification.service';
@@ -9,14 +8,14 @@ import { ConfigModule } from '@nestjs/config';
   imports: [
     ConfigModule,
     BullModule.registerQueue({
-      name: 'email-queue', // Queue name for sending emails
+      name: 'email-queue',
       redis: {
         host: 'localhost',
-        port: 6379, // Ensure Redis is running on this port
+        port: 6379,
       },
     }),
   ],
   providers: [NotificationService, NotificationProcessor],
-  exports: [NotificationService],
+  exports: [NotificationService, BullModule],
 })
 export class NotificationModule {}

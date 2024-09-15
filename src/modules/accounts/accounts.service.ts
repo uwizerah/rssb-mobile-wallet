@@ -26,7 +26,7 @@ export class AccountsService {
 
     const newAccount = this.accountRepository.create({
       user,
-      balance: 0,
+      balance: BigInt(0),
       accountType: createAccountDto.accountType,
     });
 

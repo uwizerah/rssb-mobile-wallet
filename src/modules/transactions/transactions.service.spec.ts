@@ -1,26 +1,40 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TransactionsService } from './transactions.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { TransactionsService } from './transactions.service';
 import { Transaction } from './transaction.entity';
 import { Account } from '../accounts/account.entity';
-import { Repository } from 'typeorm';
 import { DepositDto, WithdrawDto, TransferDto } from '../accounts/dto';
+import { NotificationService } from '../notification/notification.service';
+import { PdfService } from '../../utils/pdf.service';
+import { Response } from 'express';
 import { TransactionType } from './transaction-type.enum';
+import { AccountType } from '../accounts/account-type.enum';
 
 describe('TransactionsService', () => {
   let service: TransactionsService;
   let transactionRepository: Repository<Transaction>;
   let accountRepository: Repository<Account>;
+  let notificationService: NotificationService;
+  let pdfService: PdfService;
+  let mockManager: any;
+  let res: Response;
 
   beforeEach(async () => {
-    const mockQueryBuilder = {
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      orderBy: jest.fn().mockReturnThis(),
-      take: jest.fn().mockReturnThis(),
-      skip: jest.fn().mockReturnThis(),
-      getMany: jest.fn().mockResolvedValue([]),
+    mockManager = {
+      findOne: jest.fn(),
+      save: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }),
+      create: jest.fn(),
     };
+
+    const transactionMock = jest.fn().mockImplementation(async (cb: any) => {
+      return cb(mockManager);
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -28,9 +42,10 @@ describe('TransactionsService', () => {
         {
           provide: getRepositoryToken(Transaction),
           useValue: {
-            createQueryBuilder: jest.fn(() => mockQueryBuilder),
-            create: jest.fn(),
-            save: jest.fn(),
+            manager: {
+              transaction: transactionMock,
+            },
+            find: jest.fn(),
           },
         },
         {
@@ -38,6 +53,18 @@ describe('TransactionsService', () => {
           useValue: {
             findOne: jest.fn(),
             save: jest.fn(),
+          },
+        },
+        {
+          provide: NotificationService,
+          useValue: {
+            sendEmail: jest.fn(),
+          },
+        },
+        {
+          provide: PdfService,
+          useValue: {
+            generateAccountStatement: jest.fn(),
           },
         },
       ],
@@ -50,209 +77,272 @@ describe('TransactionsService', () => {
     accountRepository = module.get<Repository<Account>>(
       getRepositoryToken(Account),
     );
+    notificationService = module.get<NotificationService>(NotificationService);
+    pdfService = module.get<PdfService>(PdfService);
+    res = {
+      set: jest.fn(),
+      send: jest.fn(),
+    } as unknown as Response;
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   describe('deposit', () => {
-    it('should deposit money into an account', async () => {
-      const account = new Account();
-      account.id = 1;
-      account.balance = 1000;
+    it('should deposit money and send a notification', async () => {
+      const account = {
+        id: 1,
+        balance: BigInt(1000),
+        user: { email: 'test@example.com', id: 1 },
+      } as Account;
 
-      const depositDto: DepositDto = { amount: 500 };
+      const depositDto: DepositDto = { amount: BigInt(500) };
 
-      jest.spyOn(accountRepository, 'findOne').mockResolvedValue(account);
-      jest.spyOn(accountRepository, 'save').mockResolvedValue(account);
-      jest
-        .spyOn(transactionRepository, 'save')
-        .mockResolvedValue(new Transaction());
+      mockManager.findOne.mockResolvedValue(account);
 
-      const result = await service.deposit(account.id, depositDto);
+      mockManager.save.mockResolvedValue(account);
 
-      expect(account.balance).toBe(1500);
-      expect(result).toBeInstanceOf(Transaction);
+      const result = await service.deposit(1, depositDto);
+
+      expect(account.balance).toBe(BigInt(1500));
+      expect(result).toBeDefined();
+      expect(notificationService.sendEmail).toHaveBeenCalledWith(
+        'test@example.com',
+        'Deposit Successful',
+        'You have successfully deposited 500. Your new balance is 1500.',
+      );
+    });
+
+    it('should throw an error if account is not found during deposit', async () => {
+      mockManager.findOne.mockResolvedValue(null);
+
+      await expect(service.deposit(1, { amount: BigInt(500) })).rejects.toThrow(
+        'Account not found',
+      );
     });
   });
 
   describe('withdraw', () => {
-    it('should withdraw money from an account', async () => {
-      const account = new Account();
-      account.id = 1;
-      account.balance = 1000;
+    it('should withdraw money and send a notification', async () => {
+      const account = {
+        id: 1,
+        balance: BigInt(1000),
+        user: { email: 'test@example.com' },
+      } as Account;
+      const withdrawDto: WithdrawDto = { amount: BigInt(500) };
 
-      const withdrawDto: WithdrawDto = { amount: 500 };
+      mockManager.findOne.mockResolvedValue(account);
+      mockManager.save.mockResolvedValue(account);
 
-      jest.spyOn(accountRepository, 'findOne').mockResolvedValue(account);
-      jest.spyOn(accountRepository, 'save').mockResolvedValue(account);
-      jest
-        .spyOn(transactionRepository, 'save')
-        .mockResolvedValue(new Transaction());
+      const result = await service.withdraw(1, withdrawDto);
 
-      const result = await service.withdraw(account.id, withdrawDto);
-
-      expect(account.balance).toBe(500);
-      expect(result).toBeInstanceOf(Transaction);
+      expect(account.balance).toBe(BigInt(500));
+      expect(result).toBeDefined();
+      expect(notificationService.sendEmail).toHaveBeenCalledWith(
+        'test@example.com',
+        'Withdrawal Successful',
+        'You have successfully withdrawn 500. Your new balance is 500.',
+      );
     });
 
-    it('should throw an error if account balance is insufficient', async () => {
-      const account = new Account();
-      account.id = 1;
-      account.balance = 200;
+    it('should throw an error if balance is insufficient during withdrawal', async () => {
+      const account = {
+        id: 1,
+        balance: BigInt(200),
+        user: { email: 'test@example.com' },
+      } as Account;
+      const withdrawDto: WithdrawDto = { amount: BigInt(500) };
 
-      const withdrawDto: WithdrawDto = { amount: 500 };
+      mockManager.findOne.mockResolvedValue(account);
 
-      jest.spyOn(accountRepository, 'findOne').mockResolvedValue(account);
-
-      await expect(service.withdraw(account.id, withdrawDto)).rejects.toThrow(
+      await expect(service.withdraw(1, withdrawDto)).rejects.toThrow(
         'Insufficient balance',
+      );
+      expect(notificationService.sendEmail).toHaveBeenCalledWith(
+        'test@example.com',
+        'Withdrawal Failed',
+        'Your withdrawal of 500 failed due to insufficient balance.',
       );
     });
   });
 
   describe('transfer', () => {
-    it('should transfer money between accounts', async () => {
-      const senderAccount = new Account();
-      senderAccount.id = 1;
-      senderAccount.balance = 1000;
-
-      const recipientAccount = new Account();
-      recipientAccount.id = 2;
-      recipientAccount.balance = 500;
-
+    it('should transfer money between accounts and send notifications', async () => {
+      const senderAccount = {
+        id: 1,
+        balance: BigInt(1000),
+        user: { email: 'sender@example.com' },
+      } as Account;
+      const recipientAccount = {
+        id: 2,
+        balance: BigInt(500),
+        user: { email: 'recipient@example.com', username: 'Recipient' },
+      } as Account;
       const transferDto: TransferDto = {
-        amount: 300,
-        recipientAccountId: recipientAccount.id,
+        amount: BigInt(300),
+        recipientEmail: 'recipient@example.com',
       };
 
-      jest
-        .spyOn(accountRepository, 'findOne')
+      mockManager.findOne
+        .mockResolvedValueOnce(senderAccount)
+        .mockResolvedValueOnce(recipientAccount)
         .mockResolvedValueOnce(senderAccount)
         .mockResolvedValueOnce(recipientAccount);
+      mockManager.save.mockResolvedValue(senderAccount);
 
-      jest.spyOn(accountRepository, 'save').mockResolvedValue(senderAccount);
-      jest
-        .spyOn(transactionRepository, 'create')
-        .mockReturnValue(new Transaction());
-      jest
-        .spyOn(transactionRepository, 'save')
-        .mockResolvedValue(new Transaction());
+      const result = await service.transfer(1, transferDto);
 
-      const result = await service.transfer(senderAccount.id, transferDto);
-
-      expect(senderAccount.balance).toBe(700);
-      expect(recipientAccount.balance).toBe(800);
-      expect(result).toBeInstanceOf(Transaction);
+      expect(senderAccount.balance).toBe(BigInt(700));
+      expect(recipientAccount.balance).toBe(BigInt(800));
+      expect(result).toBeDefined();
+      expect(notificationService.sendEmail).toHaveBeenCalledWith(
+        'sender@example.com',
+        'Transfer Successful',
+        'You have successfully transferred 300 to recipient@example.com. Your new balance is 700.',
+      );
     });
 
-    it('should throw an error if sender account balance is insufficient', async () => {
-      const senderAccount = new Account();
-      senderAccount.id = 1;
-      senderAccount.balance = 100;
+    it('should throw an error if sender balance is insufficient', async () => {
+      const senderAccount = {
+        id: 1,
+        balance: BigInt(200),
+        user: { email: 'sender@example.com' },
+      } as Account;
 
-      const recipientAccount = new Account();
-      recipientAccount.id = 2;
-      recipientAccount.balance = 500;
+      const recipientAccount = {
+        id: 2,
+        balance: BigInt(500),
+        user: { email: 'recipient@example.com', username: 'Recipient' },
+      } as Account;
 
       const transferDto: TransferDto = {
-        amount: 300,
-        recipientAccountId: recipientAccount.id,
+        amount: BigInt(300),
+        recipientEmail: 'recipient@example.com',
       };
 
-      jest
-        .spyOn(accountRepository, 'findOne')
+      // Ensure that findOne is called multiple times and returns the correct accounts
+      mockManager.findOne
+        .mockResolvedValueOnce(senderAccount)
+        .mockResolvedValueOnce(recipientAccount)
         .mockResolvedValueOnce(senderAccount)
         .mockResolvedValueOnce(recipientAccount);
 
-      await expect(
-        service.transfer(senderAccount.id, transferDto),
-      ).rejects.toThrow('Insufficient balance');
+      await expect(service.transfer(1, transferDto)).rejects.toThrow(
+        'Insufficient balance',
+      );
+
+      expect(notificationService.sendEmail).toHaveBeenCalledWith(
+        'sender@example.com',
+        'Transfer Failed',
+        'Your transfer of 300 to recipient@example.com failed due to insufficient balance.',
+      );
+    });
+
+    it('should throw an error if sender or recipient account is not found', async () => {
+      const transferDto: TransferDto = {
+        amount: BigInt(300),
+        recipientEmail: 'recipient@example.com',
+      };
+
+      mockManager.findOne.mockResolvedValue(null);
+
+      await expect(service.transfer(1, transferDto)).rejects.toThrow(
+        'Account not found',
+      );
     });
   });
 
   describe('getFilteredTransactions', () => {
-    it('should return filtered transactions', async () => {
-      const account = new Account();
-      account.id = 1;
+    it('should throw an error if account is not found', async () => {
+      jest.spyOn(accountRepository, 'findOne').mockResolvedValue(null);
 
-      const mockTransactions = [
+      await expect(service.getFilteredTransactions(1)).rejects.toThrow(
+        'Account not found',
+      );
+    });
+  });
+
+  describe('generateAccountStatement', () => {
+    it('should generate account statement and return PDF', async () => {
+      const account = {
+        id: 1,
+        user: { username: 'testuser' },
+        balance: BigInt(5000),
+        accountType: AccountType.PERSONAL,
+      } as Account;
+      const transactions = [
         {
           id: 1,
-          account: account,
-          amount: 100,
-          transactionType: TransactionType.DEPOSIT,
+          amount: BigInt(100),
+          transactionType: 'Deposit',
+          reference: 'abc123',
           createdAt: new Date(),
-        } as Transaction,
-      ];
+        },
+      ] as Transaction[];
+      const mockPdfBuffer = Buffer.from('pdf-content');
 
       jest.spyOn(accountRepository, 'findOne').mockResolvedValue(account);
-      jest.spyOn(transactionRepository, 'createQueryBuilder').mockReturnValue({
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue(mockTransactions),
-      } as any);
+      jest.spyOn(transactionRepository, 'find').mockResolvedValue(transactions);
+      jest
+        .spyOn(pdfService, 'generateAccountStatement')
+        .mockResolvedValue(mockPdfBuffer);
 
-      const result = await service.getFilteredTransactions(account.id, 10, 1);
-      expect(result).toEqual(mockTransactions);
+      await service.generateAccountStatement(1, res);
+
+      expect(accountRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 1 },
+        relations: ['user'],
+      });
+      expect(transactionRepository.find).toHaveBeenCalledWith({
+        where: { account: { id: 1 } },
+        order: { createdAt: 'DESC' },
+      });
+      expect(pdfService.generateAccountStatement).toHaveBeenCalledWith(
+        account,
+        transactions,
+      );
+      expect(res.set).toHaveBeenCalledWith({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'attachment; filename=account_statement_1.pdf',
+        'Content-Length': mockPdfBuffer.length,
+      });
+      expect(res.send).toHaveBeenCalledWith(mockPdfBuffer);
     });
 
-    it('should handle pagination correctly', async () => {
-      const account = new Account();
-      account.id = 1;
+    it('should throw an error if account is not found', async () => {
+      jest.spyOn(accountRepository, 'findOne').mockResolvedValue(null);
 
-      const mockTransactions = [{ id: 1, amount: 100 }] as Transaction[];
-
-      jest.spyOn(accountRepository, 'findOne').mockResolvedValue(account);
-      jest.spyOn(transactionRepository, 'createQueryBuilder').mockReturnValue({
-        where: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        skip: jest.fn((skip: number) => expect(skip).toBe(10)).mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue(mockTransactions),
-      } as any);
-
-      await service.getFilteredTransactions(account.id, 10, 2);
-    });
-
-    it('should apply filters for transactionType', async () => {
-      const account = new Account();
-      account.id = 1;
-
-      jest.spyOn(accountRepository, 'findOne').mockResolvedValue(account);
-      jest.spyOn(transactionRepository, 'createQueryBuilder').mockReturnValue({
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn((condition: string) => {
-          expect(condition).toContain(
-            'transaction.transactionType = :transactionType',
-          );
-          return this;
-        }),
-        orderBy: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue([]),
-      } as any);
-
-      await service.getFilteredTransactions(
-        account.id,
-        10,
-        1,
-        undefined,
-        undefined,
-        'deposit',
+      await expect(service.generateAccountStatement(1, res)).rejects.toThrow(
+        'Account not found',
       );
     });
 
-    it('should throw an error if the account is not found', async () => {
-      jest.spyOn(accountRepository, 'findOne').mockResolvedValue(null);
+    it('should throw an error if PDF generation fails', async () => {
+      const account = {
+        id: 1,
+        user: { username: 'testuser' },
+        balance: BigInt(5000),
+        accountType: AccountType.PERSONAL,
+      } as Account;
+      const transactions = [
+        {
+          id: 1,
+          amount: BigInt(100),
+          transactionType: TransactionType.DEPOSIT,
+          reference: 'abc123',
+          createdAt: new Date(),
+        },
+      ] as Transaction[];
 
-      await expect(service.getFilteredTransactions(999, 10, 1)).rejects.toThrow(
-        'Account not found',
+      jest.spyOn(accountRepository, 'findOne').mockResolvedValue(account);
+      jest.spyOn(transactionRepository, 'find').mockResolvedValue(transactions);
+      jest
+        .spyOn(pdfService, 'generateAccountStatement')
+        .mockResolvedValue(Buffer.alloc(0));
+
+      await expect(service.generateAccountStatement(1, res)).rejects.toThrow(
+        'Failed to generate PDF',
       );
     });
   });
