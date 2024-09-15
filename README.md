@@ -90,6 +90,8 @@ This project is a backend API for a mobile wallet application, where users can c
 
 ### Docker Setup
 
+First, make sure you have `.env` set up as mentioned in local setup step 3. 
+
 1. **Build and run the Docker containers**:
    ```bash
    docker-compose up --build
